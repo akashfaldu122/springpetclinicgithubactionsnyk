@@ -50,17 +50,16 @@ jobs:
       # --------------------
       - name: Run Snyk test for all projects
         run: snyk test --all-projects --json-file-output=snyk-os.json || true
-
+      
       - name: Split Snyk JSON array into individual project files
         run: |
           mkdir -p snyk-json
           if [ -s snyk-os.json ]; then
-            # Split array elements into individual files
             jq -c '.[]' snyk-os.json | nl -w1 -s: | while IFS=: read i obj; do
               echo $obj | jq '.' > snyk-json/project-$i.json
             done
           else
-            echo "snyk-os.json is empty, skipping JSON split."
+            echo "snyk-os.json is empty, skipping."
           fi
       
       - name: Convert each project JSON to SARIF
@@ -71,13 +70,12 @@ jobs:
               npx snyk-to-sarif "$file" > "snyk-sarif/$(basename $file .json).sarif"
             fi
           done
+      
+      - name: Upload all SARIF files
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-sarif/*.sarif
 
-
-      - name: Upload all OS SARIF files
-        run: |
-          for sarif in snyk-sarif/*.sarif; do
-            gh codeql upload-sarif "$sarif" || true
-          done
 
       - name: Monitor all OS projects in Snyk
         run: snyk monitor --all-projects || true
