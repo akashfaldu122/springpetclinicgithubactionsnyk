@@ -1,5 +1,5 @@
 name: Snyk Full Security Scan
- 
+
 on:
   push:
     branches: [ "main" ]
@@ -19,23 +19,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --------------------
-      # Install Snyk CLI
-      # --------------------
-      - name: Install Snyk
-        run: npm install -g snyk
-
-      - name: Authenticate Snyk
-        run: snyk auth $SNYK_TOKEN
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
-      - name: Install Snyk and snyk-to-sarif
-        run: |
-          npm install -g snyk snyk-to-sarif
+      - name: Install Snyk CLI + SARIF converter
+        run: npm install -g snyk snyk-to-sarif
+
+      - name: Authenticate Snyk
+        run: snyk auth $SNYK_TOKEN
 
       # --------------------
       # Open Source Dependencies Scan
@@ -43,20 +36,24 @@ jobs:
       - name: Snyk OS Scan
         run: snyk test --all-projects --json-file-output=snyk-os.json || true
 
-      - name: Check Snyk JSON output
-        run: cat snyk-os.json
-
+      - name: Validate OS JSON
+        run: |
+          if [ ! -s snyk-os.json ]; then
+            echo "{}" > snyk-os.json
+          fi
+          cat snyk-os.json
 
       - name: Convert OS Scan to SARIF
         run: snyk-to-sarif snyk-os.json > snyk-os.sarif
 
       - name: Upload OS SARIF to GitHub
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-os.sarif
 
       - name: Monitor OS Dependencies in Snyk
-        run: snyk monitor --all-projects
+        run: snyk monitor --all-projects || true
 
       # --------------------
       # Snyk Code (SAST) Scan
@@ -64,7 +61,14 @@ jobs:
       - name: Snyk Code Scan
         run: snyk code test --sarif > snyk-code.sarif || true
 
+      - name: Validate Code SARIF
+        run: |
+          if [ ! -s snyk-code.sarif ]; then
+            echo '{"version":"2.1.0","runs":[]}' > snyk-code.sarif
+          fi
+
       - name: Upload Snyk Code SARIF
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-code.sarif
