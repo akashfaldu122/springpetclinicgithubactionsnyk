@@ -43,8 +43,18 @@ jobs:
           fi
           cat snyk-os.json
 
-      - name: Convert OS Scan to SARIF
-        run: snyk-to-sarif snyk-os.json > snyk-os.sarif
+      - name: Convert OS Scan JSON to SARIF
+        run: |
+          if jq empty snyk-os.json 2>/dev/null; then
+            if jq 'type=="array"' snyk-os.json | grep true; then
+              jq '.[0]' snyk-os.json > snyk-os-single.json
+              snyk-to-sarif snyk-os-single.json > snyk-os.sarif
+            else
+              snyk-to-sarif snyk-os.json > snyk-os.sarif
+            fi
+          else
+            echo '{}' > snyk-os.sarif
+          fi
 
       - name: Upload OS SARIF to GitHub
         if: always()
