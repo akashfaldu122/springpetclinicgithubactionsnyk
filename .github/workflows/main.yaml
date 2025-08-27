@@ -31,10 +31,13 @@ jobs:
           node-version: 18
 
       # --------------------
-      # Install Snyk CLI + SARIF converter
+      # Install Snyk CLI + SARIF converter + jq
       # --------------------
-      - name: Install Snyk CLI + SARIF converter
-        run: npm install -g snyk snyk-to-sarif
+      - name: Install Snyk CLI + SARIF converter + jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          npm install -g snyk snyk-to-sarif
 
       # --------------------
       # Authenticate Snyk
@@ -43,26 +46,32 @@ jobs:
         run: snyk auth $SNYK_TOKEN
 
       # --------------------
-      # Open Source Dependencies Scan (All Projects)
+      # Snyk Scan for All Projects (Open Source Dependencies)
       # --------------------
-      - name: Snyk Scan All Projects
+      - name: Run Snyk test for all projects
+        run: snyk test --all-projects --json-file-output=snyk-os.json || true
+
+      - name: Split Snyk JSON array into individual project files
         run: |
-          snyk test --all-projects --json-file-output=snyk-os.json || true
-          cat snyk-os.json
+          mkdir -p snyk-json
+          jq -c '.[]' snyk-os.json | nl -w1 -s: | while IFS=: read i obj; do
+            echo $obj > snyk-json/project-$i.json
+          done
 
-      - name: Fix Snyk JSON for SARIF
+      - name: Convert each project JSON to SARIF
         run: |
-          cat snyk-os.json | jq '{projects: .}' > snyk-os-fixed.json
-      
-      - name: Convert OS Scan to SARIF
-        run: npx snyk-to-sarif snyk-os-fixed.json > snyk-os.sarif
+          mkdir -p snyk-sarif
+          for file in snyk-json/*.json; do
+            npx snyk-to-sarif $file > "snyk-sarif/$(basename $file .json).sarif"
+          done
 
-      - name: Upload OS SARIF to GitHub
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: snyk-os.sarif
+      - name: Upload all OS SARIF files
+        run: |
+          for sarif in snyk-sarif/*.sarif; do
+            gh codeql upload-sarif "$sarif" || true
+          done
 
-      - name: Monitor OS Dependencies in Snyk
+      - name: Monitor all OS projects in Snyk
         run: snyk monitor --all-projects || true
 
       # --------------------
@@ -76,7 +85,6 @@ jobs:
           if [ ! -s snyk-code.sarif ]; then
             echo '{"version":"2.1.0","runs":[]}' > snyk-code.sarif
           fi
-          cat snyk-code.sarif
 
       - name: Upload Code SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
