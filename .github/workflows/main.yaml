@@ -54,16 +54,24 @@ jobs:
       - name: Split Snyk JSON array into individual project files
         run: |
           mkdir -p snyk-json
-          jq -c '.[]' snyk-os.json | nl -w1 -s: | while IFS=: read i obj; do
-            echo $obj > snyk-json/project-$i.json
-          done
-
+          if [ -s snyk-os.json ]; then
+            # Split array elements into individual files
+            jq -c '.[]' snyk-os.json | nl -w1 -s: | while IFS=: read i obj; do
+              echo $obj | jq '.' > snyk-json/project-$i.json
+            done
+          else
+            echo "snyk-os.json is empty, skipping JSON split."
+          fi
+      
       - name: Convert each project JSON to SARIF
         run: |
           mkdir -p snyk-sarif
           for file in snyk-json/*.json; do
-            npx snyk-to-sarif $file > "snyk-sarif/$(basename $file .json).sarif"
+            if [ -s "$file" ]; then
+              npx snyk-to-sarif "$file" > "snyk-sarif/$(basename $file .json).sarif"
+            fi
           done
+
 
       - name: Upload all OS SARIF files
         run: |
