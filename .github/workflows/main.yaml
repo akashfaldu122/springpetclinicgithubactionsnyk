@@ -16,67 +16,81 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
     steps:
+      # --------------------
+      # Checkout repository
+      # --------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --------------------
+      # Setup Node.js
+      # --------------------
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
 
+      # --------------------
+      # Install Snyk CLI + SARIF converter
+      # --------------------
       - name: Install Snyk CLI + SARIF converter
         run: npm install -g snyk snyk-to-sarif
 
+      # --------------------
+      # Authenticate Snyk
+      # --------------------
       - name: Authenticate Snyk
         run: snyk auth $SNYK_TOKEN
 
       # --------------------
-      # Open Source Dependencies Scan
+      # Open Source Dependencies Scan (SCA) - per project
       # --------------------
-      - name: Snyk OS Scan
-        run: snyk test --all-projects --json-file-output=snyk-os.json || true
-
-      - name: Validate OS JSON
+      - name: Snyk Scan for pom.xml
+        if: exists('pom.xml')
         run: |
-          if [ ! -s snyk-os.json ]; then
-            echo "{}" > snyk-os.json
-          fi
-          cat snyk-os.json
-
-      - name: Convert OS Scan JSON to SARIF
-        run: |
-          # Check if JSON is an array (from --all-projects)
-          if jq 'type=="array"' snyk-os.json | grep true; then
-            echo "Detected array of projects, using first project for SARIF"
-            jq '.[0]' snyk-os.json > snyk-os-single.json
-            snyk-to-sarif snyk-os-single.json > snyk-os.sarif
-          else
-            snyk-to-sarif snyk-os.json > snyk-os.sarif
-          fi
-
-      - name: Upload OS SARIF to GitHub
-        if: always()
+          snyk test --file=pom.xml --json > snyk-pom.json || true
+          snyk-to-sarif snyk-pom.json > snyk-pom.sarif
+          cat snyk-pom.sarif
+      - name: Upload pom.xml SARIF
+        if: exists('pom.xml')
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: snyk-os.sarif
+          sarif_file: snyk-pom.sarif
+      - name: Monitor pom.xml in Snyk
+        if: exists('pom.xml')
+        run: snyk monitor --file=pom.xml || true
 
-      - name: Monitor OS Dependencies in Snyk
-        run: snyk monitor --all-projects || true
+      - name: Snyk Scan for package.json
+        if: exists('package.json')
+        run: |
+          snyk test --file=package.json --json > snyk-npm.json || true
+          snyk-to-sarif snyk-npm.json > snyk-npm.sarif
+          cat snyk-npm.sarif
+      - name: Upload package.json SARIF
+        if: exists('package.json')
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-npm.sarif
+      - name: Monitor package.json in Snyk
+        if: exists('package.json')
+        run: snyk monitor --file=package.json || true
+
+      # Add more blocks if you have other dependency files like build.gradle, Gemfile, etc.
 
       # --------------------
-      # Snyk Code (SAST) Scan
+      # Snyk Code Scan (SAST)
       # --------------------
       - name: Snyk Code Scan
         run: snyk code test --sarif > snyk-code.sarif || true
 
-      - name: Validate Code SARIF
+      - name: Ensure Code SARIF is valid
         run: |
           if [ ! -s snyk-code.sarif ]; then
             echo '{"version":"2.1.0","runs":[]}' > snyk-code.sarif
           fi
+          cat snyk-code.sarif
 
-      - name: Upload Snyk Code SARIF
-        if: always()
+      - name: Upload Code SARIF to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-code.sarif
