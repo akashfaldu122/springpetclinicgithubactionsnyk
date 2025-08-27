@@ -43,47 +43,23 @@ jobs:
         run: snyk auth $SNYK_TOKEN
 
       # --------------------
-      # Open Source Dependencies Scan (SCA)
+      # Open Source Dependencies Scan (All Projects)
       # --------------------
-      - name: Snyk Scan for pom.xml
+      - name: Snyk Scan All Projects
         run: |
-          if [ -f pom.xml ]; then
-            echo "Scanning pom.xml..."
-            snyk test --file=pom.xml --json > snyk-pom.json || true
-            snyk-to-sarif snyk-pom.json > snyk-pom.sarif
-            cat snyk-pom.sarif
-            snyk monitor --file=pom.xml || true
-          else
-            echo "pom.xml not found, skipping."
-          fi
+          snyk test --all-projects --json-file-output=snyk-os.json || true
+          cat snyk-os.json
 
-      - name: Upload pom.xml SARIF
-        run: |
-          if [ -f snyk-pom.sarif ]; then
-            gh codeql upload-sarif snyk-pom.sarif || true
-          else
-            echo "pom.sarif not found, skipping upload."
-          fi
+      - name: Convert OS Scan to SARIF
+        run: npx snyk-to-sarif snyk-os.json > snyk-os.sarif
 
-      - name: Snyk Scan for package.json
-        run: |
-          if [ -f package.json ]; then
-            echo "Scanning package.json..."
-            snyk test --file=package.json --json > snyk-npm.json || true
-            snyk-to-sarif snyk-npm.json > snyk-npm.sarif
-            cat snyk-npm.sarif
-            snyk monitor --file=package.json || true
-          else
-            echo "package.json not found, skipping."
-          fi
+      - name: Upload OS SARIF to GitHub
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-os.sarif
 
-      - name: Upload package.json SARIF
-        run: |
-          if [ -f snyk-npm.sarif ]; then
-            gh codeql upload-sarif snyk-npm.sarif || true
-          else
-            echo "npm SARIF not found, skipping upload."
-          fi
+      - name: Monitor OS Dependencies in Snyk
+        run: snyk monitor --all-projects || true
 
       # --------------------
       # Snyk Code Scan (SAST)
@@ -99,12 +75,9 @@ jobs:
           cat snyk-code.sarif
 
       - name: Upload Code SARIF to GitHub Security
-        run: |
-          if [ -f snyk-code.sarif ]; then
-            gh codeql upload-sarif snyk-code.sarif || true
-          else
-            echo "Code SARIF not found, skipping upload."
-          fi
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
 
       - name: Monitor Code in Snyk
         run: snyk code monitor || true
