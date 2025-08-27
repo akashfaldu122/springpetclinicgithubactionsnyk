@@ -39,10 +39,15 @@ jobs:
       # --------------------
       # Split SARIF file into individual runs
       # --------------------
-      - name: Split SARIF file
+      - name: Split Snyk SARIF into individual files
         run: |
           mkdir -p snyk-sarif
-          npx @microsoft/sarif-tools split snyk-all.sarif --out-dir snyk-sarif
+          total=$(jq '.runs | length' snyk-all.sarif)
+          for i in $(seq 0 $((total-1))); do
+            jq ".runs[$i]" snyk-all.sarif > "snyk-sarif/run-$i.json"
+            # wrap in SARIF schema
+            jq -n --argjson run "$(cat snyk-sarif/run-$i.json)" '{version: "2.1.0", runs: [$run]}' > "snyk-sarif/run-$i.sarif"
+          done
 
       # --------------------
       # Upload each SARIF run separately
@@ -52,6 +57,7 @@ jobs:
           for file in snyk-sarif/*.sarif; do
             gh codeql upload-sarif "$file" || true
           done
+
 
       # --------------------
       # Monitor projects in Snyk
