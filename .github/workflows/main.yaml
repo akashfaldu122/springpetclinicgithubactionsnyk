@@ -1,5 +1,5 @@
 name: Snyk Full Security Scan
-
+ 
 on:
   push:
     branches: [ "main" ]
