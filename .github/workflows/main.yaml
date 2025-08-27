@@ -45,15 +45,13 @@ jobs:
 
       - name: Convert OS Scan JSON to SARIF
         run: |
-          if jq empty snyk-os.json 2>/dev/null; then
-            if jq 'type=="array"' snyk-os.json | grep true; then
-              jq '.[0]' snyk-os.json > snyk-os-single.json
-              snyk-to-sarif snyk-os-single.json > snyk-os.sarif
-            else
-              snyk-to-sarif snyk-os.json > snyk-os.sarif
-            fi
+          # Check if JSON is an array (from --all-projects)
+          if jq 'type=="array"' snyk-os.json | grep true; then
+            echo "Detected array of projects, using first project for SARIF"
+            jq '.[0]' snyk-os.json > snyk-os-single.json
+            snyk-to-sarif snyk-os-single.json > snyk-os.sarif
           else
-            echo '{}' > snyk-os.sarif
+            snyk-to-sarif snyk-os.json > snyk-os.sarif
           fi
 
       - name: Upload OS SARIF to GitHub
