@@ -2,7 +2,7 @@ name: Snyk Full Security Scan
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
 
 permissions:
@@ -31,13 +31,10 @@ jobs:
           node-version: 18
 
       # --------------------
-      # Install Snyk CLI + SARIF converter + jq
+      # Install Snyk CLI
       # --------------------
-      - name: Install Snyk CLI + SARIF converter + jq
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq
-          npm install -g snyk snyk-to-sarif
+      - name: Install Snyk CLI
+        run: npm install -g snyk
 
       # --------------------
       # Authenticate Snyk
@@ -46,56 +43,35 @@ jobs:
         run: snyk auth $SNYK_TOKEN
 
       # --------------------
-      # Snyk Scan for All Projects (Open Source Dependencies)
+      # Snyk Scan for all projects (Open Source Dependencies)
       # --------------------
-      - name: Run Snyk test for all projects
-        run: snyk test --all-projects --json-file-output=snyk-os.json || true
-      
-      - name: Split Snyk JSON array into individual project files
-        run: |
-          mkdir -p snyk-json
-          if [ -s snyk-os.json ]; then
-            jq -c '.[]' snyk-os.json | nl -w1 -s: | while IFS=: read i obj; do
-              echo $obj | jq '.' > snyk-json/project-$i.json
-            done
-          else
-            echo "snyk-os.json is empty, skipping."
-          fi
-      
-      - name: Convert each project JSON to SARIF
-        run: |
-          mkdir -p snyk-sarif
-          for file in snyk-json/*.json; do
-            if [ -s "$file" ]; then
-              npx snyk-to-sarif "$file" > "snyk-sarif/$(basename $file .json).sarif"
-            fi
-          done
-      
-      - name: Upload all SARIF files
+      - name: Run Snyk test for all projects (SARIF)
+        run: snyk test --all-projects --sarif-file-output=snyk-all.sarif || true
+
+      # --------------------
+      # Upload SARIF to GitHub Security
+      # --------------------
+      - name: Upload Snyk SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: snyk-sarif/*.sarif
+          sarif_file: snyk-all.sarif
 
-
-      - name: Monitor all OS projects in Snyk
+      # --------------------
+      # Monitor all projects in Snyk
+      # --------------------
+      - name: Monitor all projects in Snyk
         run: snyk monitor --all-projects || true
 
       # --------------------
       # Snyk Code Scan (SAST)
       # --------------------
       - name: Snyk Code Scan
-        run: snyk code test --sarif > snyk-code.sarif || true
+        run: snyk code test --sarif-file-output=snyk-code.sarif || true
 
-      - name: Ensure Code SARIF is valid
-        run: |
-          if [ ! -s snyk-code.sarif ]; then
-            echo '{"version":"2.1.0","runs":[]}' > snyk-code.sarif
-          fi
-
-      - name: Upload Code SARIF to GitHub Security
+      - name: Upload Snyk Code SARIF
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: snyk-code.sarif
 
-      - name: Monitor Code in Snyk
+      - name: Monitor Snyk Code
         run: snyk code monitor || true
